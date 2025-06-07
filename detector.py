@@ -10,6 +10,7 @@ import numpy as np
 from ultralytics import YOLO
 from processor import process_screenshot
 from emailer import send_alert_email
+from call_service import CallService
 
 runtime_logs = []
 
@@ -19,8 +20,23 @@ def log(msg):
 
 def trigger_alarm_system(threat_level, location, image_path=None):
     """Interface with external alarm systems via API"""
-    if threat_level in ["HIGH", "CRITICAL"]:
+    if threat_level in ["MEDIUM", "HIGH", "CRITICAL"]:
         try:
+            # Initialize call service
+            call_service = CallService()
+            
+            # Get threat summary and analysis if available
+            summary = None
+            analysis_data = None
+            if image_path:
+                analysis = process_screenshot(image_path)
+                summary = analysis.get('summary', 'No additional details available')
+                analysis_data = analysis  # Pass the complete analysis data
+            
+            # Make alert call with AI guidance
+            call_service.make_alert_call(threat_level, location, summary, analysis_data)
+            
+            # Continue with existing alarm system
             alarm_url = os.getenv('ALARM_SYSTEM_URL')
             alarm_api_key = os.getenv('ALARM_API_KEY')
             
@@ -238,7 +254,15 @@ class HumanMovementDetector:
             
             self.person_tracker.update(curr_boxes, frame)
             
-            cv2.imwrite(current_frame_path, self.apply_privacy_mask(frame, full_boxes))
+            try:
+                # Ensure the frame is properly formatted before saving
+                frame_to_save = self.apply_privacy_mask(frame, full_boxes)
+                if frame_to_save is not None and frame_to_save.size > 0:
+                    cv2.imwrite(current_frame_path, frame_to_save)
+                else:
+                    log("[WARNING] Invalid frame format, skipping save")
+            except Exception as e:
+                log(f"[ERROR] Failed to save current frame: {e}")
 
             movement_detected = False
             for box in curr_boxes:

@@ -17,8 +17,15 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_PATH
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 app.secret_key = 'supersecretkey'  # Needed for flash messages
 
+# Ensure all required directories exist with proper permissions
 os.makedirs(SAVE_DIR, exist_ok=True)
 os.makedirs(VIDEO_DIR, exist_ok=True)
+os.makedirs("static", exist_ok=True)
+
+# Ensure the current frame file exists (even if empty)
+if not os.path.exists(FRAME_PATH):
+    with open(FRAME_PATH, 'wb') as f:
+        f.write(b'')
 
 detector = None
 security_system = SecuritySystem()
@@ -67,9 +74,18 @@ def home():
 @app.route("/current_frame")
 def current_frame():
     """Return the current frame being processed"""
-    if os.path.exists(FRAME_PATH):
-        return send_from_directory("static", "current_frame.jpg")
-    return jsonify({"error": "No current frame available"}), 404
+    try:
+        if os.path.exists(FRAME_PATH):
+            response = send_from_directory("static", "current_frame.jpg")
+            # Add cache control headers to prevent browser caching
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
+        return jsonify({"error": "No current frame available"}), 404
+    except Exception as e:
+        print(f"Error serving current frame: {e}")
+        return jsonify({"error": "Error serving frame"}), 500
 
 @app.route("/start", methods=["POST"])
 def start_detection():
