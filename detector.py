@@ -276,34 +276,59 @@ class HumanMovementDetector:
                 image_filename = f"{timestamp_str}.jpg"
                 image_path = os.path.join(self.output_dir, image_filename)
                 
-                cv2.imwrite(image_path, frame)
-
-                analysis = process_screenshot(image_path)
-                log_filename = f"{timestamp_str}.json"
-                log_path = os.path.join(self.output_dir, log_filename)
-                with open(log_path, 'w') as log_file:
-                    log_data = {
-                        "timestamp": timestamp_str,
-                        "image": image_filename,
-                        "analysis": analysis
-                    }
-                    json.dump(log_data, log_file, indent=2)
-
-                log(f"[LOGGED] {image_filename} | Action: {analysis.get('action_required')} | Danger: {analysis.get('danger')}")
-
-                if analysis.get("action_required"):
-                    self.potential_threats.append({
-                        "time": current_video_time,
-                        "analysis": analysis,
-                        "image_path": image_path
-                    })
+                try:
+                    # Save the frame
+                    cv2.imwrite(image_path, frame)
+                    if not os.path.exists(image_path):
+                        raise FileNotFoundError(f"Failed to save image to {image_path}")
                     
-                    if len(self.potential_threats) >= self.confirmation_threshold:
-                        self._handle_confirmed_threat(self.potential_threats[-1])
-                        self.last_trigger_video_time = current_video_time
+                    # Process the image
+                    try:
+                        analysis = process_screenshot(image_path)
+                        if analysis.get("status") == "error":
+                            error_msg = analysis.get("error", "Unknown error")
+                            log(f"[ERROR] Image analysis failed: {error_msg}")
+                            log(f"[LOGGED] {image_filename} | Action: False | Danger: {error_msg}")
+                        else:
+                            log(f"[LOGGED] {image_filename} | Action: {analysis.get('action_required')} | Danger: {analysis.get('danger')}")
+                    except Exception as e:
+                        log(f"[ERROR] Failed to process image: {str(e)}")
+                        log(f"[LOGGED] {image_filename} | Action: False | Danger: Failed to process image")
+                        analysis = {
+                            "status": "error",
+                            "error": str(e),
+                            "action_required": False,
+                            "danger": "Failed to process image"
+                        }
+                    
+                    # Save the log
+                    log_filename = f"{timestamp_str}.json"
+                    log_path = os.path.join(self.output_dir, log_filename)
+                    with open(log_path, 'w') as log_file:
+                        log_data = {
+                            "timestamp": timestamp_str,
+                            "image": image_filename,
+                            "analysis": analysis
+                        }
+                        json.dump(log_data, log_file, indent=2)
+
+                    if analysis.get("action_required"):
+                        self.potential_threats.append({
+                            "time": current_video_time,
+                            "analysis": analysis,
+                            "image_path": image_path
+                        })
+                        
+                        if len(self.potential_threats) >= self.confirmation_threshold:
+                            self._handle_confirmed_threat(self.potential_threats[-1])
+                            self.last_trigger_video_time = current_video_time
+                            self.potential_threats = []
+                    else:
                         self.potential_threats = []
-                else:
-                    self.potential_threats = []
+                        
+                except Exception as e:
+                    log(f"[ERROR] Failed to process movement detection: {str(e)}")
+                    log(f"[LOGGED] {image_filename} | Action: False | Danger: Failed to process movement")
 
             else:
                 self.recent_activity = False

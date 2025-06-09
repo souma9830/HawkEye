@@ -6,6 +6,11 @@ import threading
 from datetime import datetime, timedelta
 from detector import HumanMovementDetector, SecuritySystem, runtime_logs
 from werkzeug.utils import secure_filename
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 SAVE_DIR = "static/saves"
@@ -18,14 +23,19 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 app.secret_key = 'supersecretkey'  # Needed for flash messages
 
 # Ensure all required directories exist with proper permissions
-os.makedirs(SAVE_DIR, exist_ok=True)
-os.makedirs(VIDEO_DIR, exist_ok=True)
-os.makedirs("static", exist_ok=True)
+for directory in [SAVE_DIR, VIDEO_DIR, "static"]:
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except Exception as e:
+        logger.error(f"Failed to create directory {directory}: {e}")
 
 # Ensure the current frame file exists (even if empty)
-if not os.path.exists(FRAME_PATH):
-    with open(FRAME_PATH, 'wb') as f:
-        f.write(b'')
+try:
+    if not os.path.exists(FRAME_PATH):
+        with open(FRAME_PATH, 'wb') as f:
+            f.write(b'')
+except Exception as e:
+    logger.error(f"Failed to create current frame file: {e}")
 
 detector = None
 security_system = SecuritySystem()
@@ -67,24 +77,34 @@ def start_cleanup_task():
 
 @app.route("/")
 def home():
-    video_files = [f for f in os.listdir(VIDEO_DIR) if f.endswith((".mp4", ".avi"))]
-    running = detector.running if detector else False
-    return render_template("index.html", running=running, video_files=video_files)
+    try:
+        video_files = [f for f in os.listdir(VIDEO_DIR) if f.endswith((".mp4", ".avi"))]
+        running = detector.running if detector else False
+        return render_template("index.html", running=running, video_files=video_files)
+    except Exception as e:
+        logger.error(f"Error in home route: {e}")
+        return render_template("error.html", error="Failed to load home page"), 500
 
 @app.route("/current_frame")
 def current_frame():
     """Return the current frame being processed"""
     try:
-        if os.path.exists(FRAME_PATH):
-            response = send_from_directory("static", "current_frame.jpg")
-            # Add cache control headers to prevent browser caching
-            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
-            return response
-        return jsonify({"error": "No current frame available"}), 404
+        if not os.path.exists(FRAME_PATH):
+            logger.warning("Current frame file not found")
+            return jsonify({"error": "No current frame available"}), 404
+            
+        if os.path.getsize(FRAME_PATH) == 0:
+            logger.warning("Current frame file is empty")
+            return jsonify({"error": "Frame is empty"}), 404
+            
+        response = send_from_directory("static", "current_frame.jpg")
+        # Add cache control headers to prevent browser caching
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     except Exception as e:
-        print(f"Error serving current frame: {e}")
+        logger.error(f"Error serving current frame: {e}")
         return jsonify({"error": "Error serving frame"}), 500
 
 @app.route("/start", methods=["POST"])
@@ -121,12 +141,25 @@ def stop_detection():
 
 @app.route("/reset", methods=["POST"])
 def reset_logs():
-    for f in os.listdir(SAVE_DIR):
-        os.remove(os.path.join(SAVE_DIR, f))
-    if os.path.exists(FRAME_PATH):
-        os.remove(FRAME_PATH)
-    runtime_logs.append("[RESET] Logs and screenshots cleared.")
-    return jsonify({"status": "reset"})
+    try:
+        for f in os.listdir(SAVE_DIR):
+            try:
+                os.remove(os.path.join(SAVE_DIR, f))
+            except Exception as e:
+                logger.error(f"Error removing file {f}: {e}")
+                continue
+                
+        if os.path.exists(FRAME_PATH):
+            try:
+                os.remove(FRAME_PATH)
+            except Exception as e:
+                logger.error(f"Error removing current frame: {e}")
+                
+        runtime_logs.append("[RESET] Logs and screenshots cleared.")
+        return jsonify({"status": "reset"})
+    except Exception as e:
+        logger.error(f"Error resetting logs: {e}")
+        return jsonify({"error": "Failed to reset logs"}), 500
 
 @app.route("/save-zones", methods=["POST"])
 def save_zones():
@@ -141,33 +174,57 @@ def save_zones():
 
 @app.route("/status", methods=["GET"])
 def status():
-    running = detector.running if detector else False
-    return jsonify({"running": running})
+    try:
+        running = detector.running if detector else False
+        return jsonify({"running": running})
+    except Exception as e:
+        logger.error(f"Error getting status: {e}")
+        return jsonify({"error": "Failed to get status"}), 500
 
 @app.route("/logs")
 def list_logs():
-    logs = []
-    for filename in os.listdir(SAVE_DIR):
-        if filename.endswith(".json"):
-            with open(os.path.join(SAVE_DIR, filename), "r") as f:
-                data = json.load(f)
-                logs.append(data)
-    return jsonify(sorted(logs, key=lambda x: x["timestamp"], reverse=True))
+    try:
+        logs = []
+        for filename in os.listdir(SAVE_DIR):
+            if filename.endswith(".json"):
+                try:
+                    with open(os.path.join(SAVE_DIR, filename), "r") as f:
+                        data = json.load(f)
+                        logs.append(data)
+                except Exception as e:
+                    logger.error(f"Error reading log file {filename}: {e}")
+                    continue
+        return jsonify(sorted(logs, key=lambda x: x["timestamp"], reverse=True))
+    except Exception as e:
+        logger.error(f"Error listing logs: {e}")
+        return jsonify({"error": "Failed to list logs"}), 500
 
 @app.route("/logs/action-required")
 def logs_action_required():
-    flagged = []
-    for filename in os.listdir(SAVE_DIR):
-        if filename.endswith(".json"):
-            with open(os.path.join(SAVE_DIR, filename), "r") as f:
-                data = json.load(f)
-                if data.get("analysis", {}).get("action_required"):
-                    flagged.append(data)
-    return jsonify(sorted(flagged, key=lambda x: x["timestamp"], reverse=True))
+    try:
+        flagged = []
+        for filename in os.listdir(SAVE_DIR):
+            if filename.endswith(".json"):
+                try:
+                    with open(os.path.join(SAVE_DIR, filename), "r") as f:
+                        data = json.load(f)
+                        if data.get("analysis", {}).get("action_required"):
+                            flagged.append(data)
+                except Exception as e:
+                    logger.error(f"Error reading log file {filename}: {e}")
+                    continue
+        return jsonify(sorted(flagged, key=lambda x: x["timestamp"], reverse=True))
+    except Exception as e:
+        logger.error(f"Error getting action required logs: {e}")
+        return jsonify({"error": "Failed to get action required logs"}), 500
 
 @app.route("/logs/live")
 def live_logs():
-    return jsonify(runtime_logs[-100:])
+    try:
+        return jsonify(runtime_logs[-100:])
+    except Exception as e:
+        logger.error(f"Error getting live logs: {e}")
+        return jsonify({"error": "Failed to get live logs"}), 500
 
 @app.route("/analytics")
 def analytics():
@@ -278,6 +335,14 @@ def before_request_func():
     if not getattr(app, 'cleanup_task_started', False):
         app.cleanup_task_started = True
         start_cleanup_task()
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return jsonify({"error": "Resource not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
