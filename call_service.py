@@ -1,8 +1,9 @@
 from twilio.rest import Client
+from twilio.twiml.voice_response import VoiceResponse
 import os
 from datetime import datetime
 import logging
-import openai
+import google.generativeai as genai
 import json
 
 # Configure logging
@@ -17,8 +18,9 @@ class CallService:
         self.to_number = os.getenv('ALERT_PHONE_NUMBER')
         self.client = None
         
-        # Initialize OpenAI
-        openai.api_key = os.getenv('OPENAI_API_KEY')
+        # Initialize Gemini
+        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
         
         if all([self.account_sid, self.auth_token, self.from_number, self.to_number]):
             self.client = Client(self.account_sid, self.auth_token)
@@ -32,16 +34,17 @@ class CallService:
             logger.warning(f"Call service not fully configured. Missing: {', '.join(missing)}")
 
     def _analyze_threat_with_ai(self, threat_level, location, summary, analysis_data):
-        """Use OpenAI to analyze the threat and provide guidance"""
+        """Use Gemini to analyze the threat and provide guidance"""
         try:
             # Extract relevant information from analysis_data
             profiles = analysis_data.get('profiles', []) if analysis_data else []
             weapons = analysis_data.get('weapons', []) if analysis_data else []
             recommended_response = analysis_data.get('recommended_response', 'No specific action needed.') if analysis_data else 'No specific action needed.'
             
-            # Prepare the context for the AI
+            # Prepare the context for the AI with a request for brevity
             context = f"""
-            You are a security expert analyzing a live security feed. Provide a detailed analysis and immediate action plan.
+            You are a security expert analyzing a live security feed. Provide a BRIEF analysis and immediate action plan.
+            Keep your response under 200 words and focus on the most critical information.
 
             Current Situation:
             - Threat Level: {threat_level}
@@ -51,39 +54,23 @@ class CallService:
             - Potential Weapons: {', '.join(weapons) if weapons else 'None'}
             - System Recommendation: {recommended_response}
 
-            Please provide a detailed response in the following format:
-            1. SITUATION ASSESSMENT:
-               - What is happening in the video
-               - Level of immediate danger
-               - Number of people involved
-               - Any visible weapons or threatening objects
+            Provide a concise response with:
+            1. Immediate threat assessment
+            2. Critical actions needed
+            3. Key safety measures
 
-            2. IMMEDIATE ACTIONS REQUIRED:
-               - Step-by-step actions to take right now
-               - Whether to contact emergency services (police at 100, fire, etc.)
-               - Specific emergency numbers to call
-               - Safety measures to implement immediately
-
-            3. PRECAUTIONARY MEASURES:
-               - Additional security steps to take
-               - Areas to secure or evacuate
-               - Communication protocols to follow
-
-            Make the response clear, concise, and immediately actionable. Focus on protecting life and property.
+            Keep it brief and actionable.
             """
             
-            # Get AI response
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a security expert assistant providing real-time threat analysis and immediate action guidance. Be specific, clear, and focus on immediate actions needed to protect life and property."},
-                    {"role": "user", "content": context}
-                ],
-                temperature=0.7,
-                max_tokens=800
-            )
+            # Get AI response using Gemini
+            response = self.model.generate_content(context)
             
-            return response.choices[0].message.content.strip()
+            # Truncate response if needed and ensure it's properly formatted
+            ai_response = response.text.strip()
+            if len(ai_response) > 500:  # Set a reasonable limit
+                ai_response = ai_response[:497] + "..."
+            
+            return ai_response
             
         except Exception as e:
             logger.error(f"Failed to analyze threat with AI: {str(e)}")
@@ -107,20 +94,35 @@ class CallService:
             # Get AI analysis and guidance
             ai_guidance = self._analyze_threat_with_ai(threat_level, location, summary, analysis_data)
             
-            # Create a message for the call
-            message = f"Security Alert! {threat_level} level threat detected at {location}. "
+            # Create a concise message for the call
+            message = f"Security Alert! {threat_level} level threat at {location}. "
             if summary:
+                # Truncate summary if too long
+                summary = summary[:100] + "..." if len(summary) > 100 else summary
                 message += f"Initial assessment: {summary}. "
-            message += f"Security Expert Analysis and Guidance: {ai_guidance}"
+            
+            # Add AI guidance with size check
+            message += f"Security Analysis: {ai_guidance}"
 
-            # Format the message for Twilio's voice system
-            twiml = f"""
-            <Response>
-                <Say voice="Polly.Amy" language="en-GB">
-                    {message}
-                </Say>
-            </Response>
-            """
+            # Create TwiML response using Twilio's builder
+            response = VoiceResponse()
+            
+            # Split message into smaller chunks if needed
+            max_chunk_size = 1000  # Twilio's recommended chunk size
+            message_chunks = [message[i:i+max_chunk_size] for i in range(0, len(message), max_chunk_size)]
+            
+            # Add each chunk as a separate Say verb
+            for chunk in message_chunks:
+                response.say(chunk, voice='Polly.Amy', language='en-GB')
+                response.pause(length=1)  # Add a small pause between chunks
+            
+            # Add closing message
+            response.say("This is an automated security alert. Please take necessary actions.", 
+                        voice='Polly.Amy', 
+                        language='en-GB')
+
+            # Convert TwiML to string
+            twiml = str(response)
 
             # Make the call using Twilio
             call = self.client.calls.create(

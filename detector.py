@@ -214,7 +214,7 @@ class HumanMovementDetector:
         trigger_alarm_system(threat_level, location, image_path)
         
         if self.user_email:
-            subject = f"🔴 ThreatSnap Alert – {threat_level} Threat"
+            subject = f"🔴 HawkEye Alert – {threat_level} Threat"
             body = (
                 f"Timestamp: {analysis['timestamp']}\n\n"
                 f"Danger: {threat_level}\n\n"

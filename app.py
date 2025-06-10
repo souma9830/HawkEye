@@ -260,7 +260,12 @@ def analytics():
             weapons_detected[weapon] = weapons_detected.get(weapon, 0) + 1
         
         for profile in analysis.get("profiles", []):
-            desc = profile.get("description", "Unknown person")
+            # Handle both string and dictionary profiles
+            if isinstance(profile, dict):
+                desc = profile.get("description", "Unknown person")
+            else:
+                desc = str(profile)
+            
             parts = desc.split(',')
             if parts:
                 key = parts[0].strip()
@@ -334,7 +339,8 @@ def before_request_func():
     global cleanup_task_started
     if not getattr(app, 'cleanup_task_started', False):
         app.cleanup_task_started = True
-        start_cleanup_task()
+        # Comment out automatic cleanup to preserve logs
+        # start_cleanup_task()
 
 @app.errorhandler(404)
 def not_found_error(error):
@@ -342,7 +348,7 @@ def not_found_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
-    return jsonify({"error": "Internal server error"}), 500
+    return render_template("error.html", error="Internal server error"), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
