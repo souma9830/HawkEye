@@ -76,6 +76,10 @@ def start_cleanup_task():
     runtime_logs.append("[SYSTEM] Started cleanup background task")
 
 @app.route("/")
+def landing():
+    return render_template("landing.html")
+
+@app.route("/app")
 def home():
     try:
         video_files = [f for f in os.listdir(VIDEO_DIR) if f.endswith((".mp4", ".avi"))]
