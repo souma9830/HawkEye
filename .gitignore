@@ -36,6 +36,8 @@ ENV/
 
 # Project specific
 /static/saves/
+# Allow assets folder but exclude other image/video files
+!/static/assets/
 *.jpg
 *.jpeg
 *.png
