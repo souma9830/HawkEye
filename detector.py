@@ -20,21 +20,32 @@ def log(msg):
 
 def trigger_alarm_system(threat_level, location, image_path=None):
     """Interface with external alarm systems via API"""
+    log(f"[ALARM] Triggering alarm system for {threat_level} threat at {location}")
+    
     if threat_level in ["MEDIUM", "HIGH", "CRITICAL"]:
         try:
             # Initialize call service
+            log("[ALARM] Initializing call service...")
             call_service = CallService()
             
             # Get threat summary and analysis if available
             summary = None
             analysis_data = None
             if image_path:
+                log(f"[ALARM] Processing image for analysis: {image_path}")
                 analysis = process_screenshot(image_path)
                 summary = analysis.get('summary', 'No additional details available')
                 analysis_data = analysis  # Pass the complete analysis data
+                log(f"[ALARM] Analysis completed. Summary: {summary[:100]}...")
             
             # Make alert call with AI guidance
-            call_service.make_alert_call(threat_level, location, summary, analysis_data)
+            log("[ALARM] Making alert call...")
+            call_result = call_service.make_alert_call(threat_level, location, summary, analysis_data)
+            
+            if call_result:
+                log("[ALARM] ✓ Alert call initiated successfully")
+            else:
+                log("[ALARM] ✗ Failed to initiate alert call")
             
             # Continue with existing alarm system
             alarm_url = os.getenv('ALARM_SYSTEM_URL')
@@ -57,6 +68,8 @@ def trigger_alarm_system(threat_level, location, image_path=None):
                 log("[CONFIG] External alarm system not configured")
         except Exception as e:
             log(f"[ERROR] Failed to trigger alarm: {e}")
+    else:
+        log(f"[ALARM] Threat level {threat_level} not high enough for alarm trigger")
 
 class PersonTracker:
     def __init__(self):
@@ -204,16 +217,29 @@ class HumanMovementDetector:
 
     def _handle_confirmed_threat(self, threat_data):
         """Process a confirmed threat after multiple detections"""
+        log(f"[CONFIRMED THREAT] Starting threat processing...")
+        
         analysis = threat_data["analysis"]
         image_path = threat_data["image_path"]
         threat_level = analysis.get("danger", "LOW")
-        location = os.path.basename(self.video_source)
         
-        log(f"[CONFIRMED THREAT] {threat_level} at {location}")
+        # Determine location based on video source
+        if isinstance(self.video_source, int):
+            location = f"Live Camera {self.video_source}"
+        else:
+            location = os.path.basename(self.video_source)
         
+        log(f"[CONFIRMED THREAT] {threat_level} threat at {location}")
+        log(f"[CONFIRMED THREAT] Image path: {image_path}")
+        log(f"[CONFIRMED THREAT] Analysis: {analysis}")
+        
+        # Trigger alarm system (calls and external alarms)
+        log(f"[CONFIRMED THREAT] Triggering alarm system...")
         trigger_alarm_system(threat_level, location, image_path)
         
+        # Send email alert
         if self.user_email:
+            log(f"[CONFIRMED THREAT] Sending email alert to {self.user_email}")
             subject = f"🔴 HawkEye Alert – {threat_level} Threat"
             body = (
                 f"Timestamp: {analysis['timestamp']}\n\n"
@@ -228,6 +254,11 @@ class HumanMovementDetector:
                 body=body,
                 attachments=[image_path]
             )
+            log(f"[CONFIRMED THREAT] Email alert sent successfully")
+        else:
+            log(f"[CONFIRMED THREAT] No email configured, skipping email alert")
+        
+        log(f"[CONFIRMED THREAT] Threat processing completed")
 
     def _detect_loop(self):
         cap = cv2.VideoCapture(self.video_source)
@@ -313,17 +344,33 @@ class HumanMovementDetector:
                         json.dump(log_data, log_file, indent=2)
 
                     if analysis.get("action_required"):
+                        log(f"[THREAT] Adding threat to potential threats list. Current count: {len(self.potential_threats)}")
                         self.potential_threats.append({
                             "time": current_video_time,
                             "analysis": analysis,
                             "image_path": image_path
                         })
                         
-                        if len(self.potential_threats) >= self.confirmation_threshold:
+                        log(f"[THREAT] Potential threats count: {len(self.potential_threats)}/{self.confirmation_threshold}")
+                        
+                        # Check if this is a HIGH or CRITICAL threat - trigger immediately
+                        threat_level = analysis.get("danger", "LOW")
+                        if threat_level in ["HIGH", "CRITICAL"]:
+                            log(f"[THREAT] HIGH/CRITICAL threat detected! Triggering alarm immediately...")
                             self._handle_confirmed_threat(self.potential_threats[-1])
                             self.last_trigger_video_time = current_video_time
                             self.potential_threats = []
+                            log(f"[THREAT] Immediate alarm triggered for {threat_level} threat")
+                        elif len(self.potential_threats) >= self.confirmation_threshold:
+                            log(f"[THREAT] Confirmation threshold reached! Triggering alarm system...")
+                            self._handle_confirmed_threat(self.potential_threats[-1])
+                            self.last_trigger_video_time = current_video_time
+                            self.potential_threats = []
+                            log(f"[THREAT] Alarm triggered and threats list cleared")
+                        else:
+                            log(f"[THREAT] Waiting for more threats to reach confirmation threshold")
                     else:
+                        log(f"[THREAT] No action required, clearing potential threats list")
                         self.potential_threats = []
                         
                 except Exception as e:

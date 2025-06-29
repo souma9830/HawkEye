@@ -22,16 +22,31 @@ class CallService:
         genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
         self.model = genai.GenerativeModel('gemini-1.5-flash')
         
+        # Enhanced debugging
+        logger.info("=== Call Service Configuration ===")
+        logger.info(f"TWILIO_ACCOUNT_SID: {'✓ Set' if self.account_sid else '✗ Missing'}")
+        logger.info(f"TWILIO_AUTH_TOKEN: {'✓ Set' if self.auth_token else '✗ Missing'}")
+        logger.info(f"TWILIO_PHONE_NUMBER: {'✓ Set' if self.from_number else '✗ Missing'}")
+        logger.info(f"ALERT_PHONE_NUMBER: {'✓ Set' if self.to_number else '✗ Missing'}")
+        logger.info(f"GOOGLE_API_KEY: {'✓ Set' if os.getenv('GOOGLE_API_KEY') else '✗ Missing'}")
+        
         if all([self.account_sid, self.auth_token, self.from_number, self.to_number]):
-            self.client = Client(self.account_sid, self.auth_token)
-            logger.info(f"Call service initialized successfully. From: {self.from_number}, To: {self.to_number}")
+            try:
+                self.client = Client(self.account_sid, self.auth_token)
+                logger.info(f"✓ Call service initialized successfully")
+                logger.info(f"  From: {self.from_number}")
+                logger.info(f"  To: {self.to_number}")
+            except Exception as e:
+                logger.error(f"✗ Failed to initialize Twilio client: {e}")
+                self.client = None
         else:
             missing = []
             if not self.account_sid: missing.append("TWILIO_ACCOUNT_SID")
             if not self.auth_token: missing.append("TWILIO_AUTH_TOKEN")
             if not self.from_number: missing.append("TWILIO_PHONE_NUMBER")
             if not self.to_number: missing.append("ALERT_PHONE_NUMBER")
-            logger.warning(f"Call service not fully configured. Missing: {', '.join(missing)}")
+            logger.warning(f"✗ Call service not fully configured. Missing: {', '.join(missing)}")
+            logger.warning("To enable phone call alerts, create a .env file with the missing variables")
 
     def _analyze_threat_with_ai(self, threat_level, location, summary, analysis_data):
         """Use Gemini to analyze the threat and provide guidance"""
@@ -86,13 +101,19 @@ class CallService:
             summary (str, optional): Additional information about the threat
             analysis_data (dict, optional): Detailed analysis data from the detection system
         """
+        logger.info(f"=== Making Alert Call ===")
+        logger.info(f"Threat Level: {threat_level}")
+        logger.info(f"Location: {location}")
+        logger.info(f"Summary: {summary}")
+        
         if not self.client:
-            logger.error("Call service not properly configured")
+            logger.error("✗ Call service not properly configured - cannot make call")
             return False
 
         try:
             # Get AI analysis and guidance
             ai_guidance = self._analyze_threat_with_ai(threat_level, location, summary, analysis_data)
+            logger.info(f"AI Guidance generated: {len(ai_guidance)} characters")
             
             # Create a concise message for the call
             message = f"Security Alert! {threat_level} level threat at {location}. "
@@ -125,16 +146,19 @@ class CallService:
             twiml = str(response)
 
             # Make the call using Twilio
+            logger.info(f"Making call from {self.from_number} to {self.to_number}")
             call = self.client.calls.create(
                 to=self.to_number,
                 from_=self.from_number,
                 twiml=twiml
             )
             
-            logger.info(f"Alert call initiated with detailed AI guidance. Call SID: {call.sid}")
-            logger.info(f"Calling from {self.from_number} to {self.to_number}")
+            logger.info(f"✓ Alert call initiated successfully!")
+            logger.info(f"  Call SID: {call.sid}")
+            logger.info(f"  Status: {call.status}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to make alert call: {str(e)}")
+            logger.error(f"✗ Failed to make alert call: {str(e)}")
+            logger.error(f"  Error type: {type(e).__name__}")
             return False 

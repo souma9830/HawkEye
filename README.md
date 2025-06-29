@@ -13,6 +13,7 @@ HawkEye focuses primarily on **backend technology** — combining real-time obje
 ## 💡 Key Features
 
 * 📂 Uses **YOLOv8** to detect humans and movements in CCTV-like footage (runs locally)
+* 🎥 **Live camera monitoring** with real-time threat detection
 * 🤖 Uses **Google Gemini Vision** to analyze screenshots for dangerous behavior (cloud API)
 * ✉️ Sends detailed email alerts with images and structured threat logs
 * 📞 Makes automated phone calls for critical threats (Twilio)
@@ -32,21 +33,33 @@ HawkEye is designed to run locally on systems such as:
 * Schools
 * Retail environments
 * Residential security systems
+* **Live monitoring scenarios** (using built-in or external cameras)
 
-It currently processes local video files and requires internet for AI-based analysis, but future versions will support **offline AI models** for complete local operation.
+It currently processes local video files and **live camera feeds**, and requires internet for AI-based analysis, but future versions will support **offline AI models** for complete local operation.
 
 ---
 
 ## 🧪 How It Works
 
+### Video File Monitoring
 1. Select a video file (placed in `/static/videos/`)
 2. Optionally enable email alerts
 3. Click **Start Monitoring**
-4. The system:
-   * Detects human movement and extracts frames (YOLOv8, local)
-   * Applies AI for scene interpretation and threat assessment (Gemini Vision, cloud)
-   * Sends email and phone alerts for threats (if enabled)
-   * Logs activity with timestamps, labels, and screenshots
+4. The system processes the video file for threats
+
+### Live Camera Monitoring
+1. Go to the **Live Camera Monitoring** section
+2. Select your camera from the dropdown
+3. Optionally enable email alerts and privacy blur
+4. Click **Start Live Monitoring**
+5. The system monitors your camera feed in real-time
+
+### Detection Process
+The system:
+* Detects human movement and extracts frames (YOLOv8, local)
+* Applies AI for scene interpretation and threat assessment (Gemini Vision, cloud)
+* Sends email and phone alerts for threats (if enabled)
+* Logs activity with timestamps, labels, and screenshots
 
 Logs are accessible at:
 * `/logs`: General activity logs
@@ -56,11 +69,12 @@ Logs are accessible at:
 
 ## 🗺️ System Workflow Diagram
 
-Below is a flowchart illustrating the end-to-end workflow of HawkEye, from video upload to threat detection and alerting:
+Below is a flowchart illustrating the end-to-end workflow of HawkEye, from video input to threat detection and alerting:
 
 ```mermaid
 flowchart TD
-    A["User uploads video via web interface"] --> B["Video saved to server"]
+    A1["User uploads video via web interface"] --> B["Video saved to server"]
+    A2["User starts live camera monitoring"] --> B
     B --> C["YOLOv8 (local) processes video frames"]
     C -->|"Person detected?"| D{Yes}
     C -->|"No"| E["Continue monitoring"]
@@ -166,6 +180,23 @@ python app.py
 
 Then open:  
 `http://localhost:8080`
+
+---
+
+## 🧪 Testing Live Camera Functionality
+
+Before using live camera monitoring, you can test if your camera is accessible:
+
+```bash
+python test_live_camera.py
+```
+
+This script will:
+* Test camera access for multiple camera indices (0-4)
+* Verify that the detector can work with live camera input
+* Provide feedback on camera availability and functionality
+
+**Note**: Make sure your camera is connected and not being used by other applications.
 
 ---
 

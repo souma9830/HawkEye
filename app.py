@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory, render_template, redirect, url_for, flash
+from flask import Flask, request, jsonify, send_from_directory, render_template, redirect, url_for, flash, Response
 import os
 import json
 import time
@@ -7,10 +7,26 @@ from datetime import datetime, timedelta
 from detector import HumanMovementDetector, SecuritySystem, runtime_logs
 from werkzeug.utils import secure_filename
 import logging
+import cv2
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Test call service initialization on startup
+try:
+    from call_service import CallService
+    test_call_service = CallService()
+    if test_call_service.client:
+        logger.info("✅ Call service initialized successfully on startup")
+    else:
+        logger.warning("⚠️ Call service not properly configured - phone calls will not work")
+except Exception as e:
+    logger.error(f"❌ Failed to initialize call service on startup: {e}")
 
 app = Flask(__name__)
 SAVE_DIR = "static/saves"
@@ -119,22 +135,104 @@ def start_detection():
     filename = data.get("filename")
     privacy_blur = data.get("privacy_blur", False)
     zones = data.get("zones", [])
+    use_live_camera = data.get("use_live_camera", False)
 
-    video_path = os.path.join(VIDEO_DIR, filename)
-    if not os.path.isfile(video_path):
-        runtime_logs.append(f"[ERROR] File not found: {video_path}")
-        return jsonify({"status": "error", "message": "Video file not found."}), 400
+    if use_live_camera:
+        # Use live camera (usually index 0 for default camera)
+        video_source = 0
+        log_message = "Live camera"
+    else:
+        # Use uploaded video file
+        video_path = os.path.join(VIDEO_DIR, filename)
+        if not os.path.isfile(video_path):
+            runtime_logs.append(f"[ERROR] File not found: {video_path}")
+            return jsonify({"status": "error", "message": "Video file not found."}), 400
+        video_source = video_path
+        log_message = f"Video file: {filename}"
 
     if detector and detector.running:
         detector.stop()
 
-    detector = HumanMovementDetector(video_source=video_path)
+    detector = HumanMovementDetector(video_source=video_source)
     
     if zones:
         detector.set_monitoring_zones(zones)
         
     detector.start(email=email, privacy_blur=privacy_blur)
+    runtime_logs.append(f"[START] Monitoring started with {log_message}")
     return jsonify({"status": "started", "email": email})
+
+@app.route("/start-live", methods=["POST"])
+def start_live_camera():
+    """Start monitoring with live camera feed"""
+    global detector
+    data = request.get_json()
+    email = data.get("email")
+    privacy_blur = data.get("privacy_blur", False)
+    zones = data.get("zones", [])
+    camera_index = data.get("camera_index", 0)
+
+    if detector and detector.running:
+        detector.stop()
+
+    # Test camera availability
+    cap = cv2.VideoCapture(camera_index)
+    if not cap.isOpened():
+        runtime_logs.append(f"[ERROR] Camera {camera_index} not available")
+        return jsonify({"status": "error", "message": f"Camera {camera_index} not available"}), 400
+    cap.release()
+
+    detector = HumanMovementDetector(video_source=camera_index)
+    
+    if zones:
+        detector.set_monitoring_zones(zones)
+        
+    detector.start(email=email, privacy_blur=privacy_blur)
+    runtime_logs.append(f"[START] Live camera monitoring started (Camera {camera_index})")
+    return jsonify({"status": "started", "email": email})
+
+@app.route("/camera-test")
+def test_camera():
+    """Test camera availability and return available cameras"""
+    available_cameras = []
+    
+    # Test first 5 camera indices
+    for i in range(5):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            if ret:
+                available_cameras.append(i)
+            cap.release()
+    
+    return jsonify({"available_cameras": available_cameras})
+
+@app.route("/test-call", methods=["POST"])
+def test_call():
+    """Test the call service manually"""
+    try:
+        from call_service import CallService
+        call_service = CallService()
+        
+        if not call_service.client:
+            return jsonify({"error": "Call service not configured"}), 400
+        
+        # Make a test call
+        result = call_service.make_alert_call(
+            threat_level="TEST",
+            location="Test Location",
+            summary="This is a test call to verify the call service is working.",
+            analysis_data={"test": True}
+        )
+        
+        if result:
+            return jsonify({"status": "success", "message": "Test call initiated successfully"})
+        else:
+            return jsonify({"status": "error", "message": "Failed to make test call"}), 500
+            
+    except Exception as e:
+        logger.error(f"Test call error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/stop", methods=["POST"])
 def stop_detection():

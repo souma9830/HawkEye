@@ -266,24 +266,7 @@ async function fetchStatus() {
 
     previousMonitoringStatus = running
 
-    document.getElementById('monitoringStatus').innerHTML = running
-      ? '<div class="status-badge status-running"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12c0 5.5-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2s10 4.5 10 10z"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Monitoring is active</div>'
-      : '<div class="status-badge status-stopped"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12c0 5.5-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2s10 4.5 10 10z"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Monitoring is inactive</div>'
-
-    document.getElementById('startBtn').disabled = running
-    document.getElementById('filename').disabled = running
-    document.getElementById('email').disabled = running
-    document.getElementById('enableEmail').disabled = running
-    document.getElementById('stopBtn').disabled = !running
-    document.getElementById('startDrawingBtn').disabled = running
-    document.getElementById('clearZonesBtn').disabled = running
-    document.getElementById('privacyBlur').disabled = running
-
-    updateIntervals(running)
-
-    if (!running) {
-      resetLiveFeed()
-    }
+    updateMonitoringStatus(running)
 
     return running
   } catch (error) {
@@ -293,41 +276,6 @@ async function fetchStatus() {
   }
 }
 
-document.getElementById('startBtn').onclick = async () => {
-  const enableEmail = document.getElementById('enableEmail').checked
-  const email = enableEmail ? document.getElementById('email').value : null
-  const filename = document.getElementById('filename').value
-  const privacyBlur = document.getElementById('privacyBlur').checked
-
-  if (!filename) {
-    return showToast('Please select a video file.', 'error')
-  }
-
-  saveZones()
-
-  const res = await fetch('/start', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      filename,
-      privacy_blur: privacyBlur,
-    }),
-  })
-  const data = await res.json()
-  showToast(`Monitoring started${email ? ' for ' + email : ''}`, 'success')
-  fetchStatus()
-}
-
-document.getElementById('stopBtn').onclick = async () => {
-  const res = await fetch('/stop', { method: 'POST' })
-  await res.json()
-  showToast('Monitoring stopped.', 'warning')
-  fetchStatus()
-  resetLiveFeed()
-}
-
-document.getElementById('resetBtn').onclick = showConfirmModal
 document.getElementById('startDrawingBtn').onclick = startDrawingZone
 document.getElementById('clearZonesBtn').onclick = clearZones
 
@@ -500,3 +448,210 @@ fetchLogs()
 fetchCriticalAlerts()
 fetchAllLogs()
 fetchStatus()
+
+// Add event listeners for live camera functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Test camera button
+    const testCameraBtn = document.getElementById('testCameraBtn')
+    if (testCameraBtn) {
+        testCameraBtn.addEventListener('click', testCamera)
+    }
+
+    // Start live monitoring button
+    const startLiveBtn = document.getElementById('startLiveBtn')
+    if (startLiveBtn) {
+        startLiveBtn.addEventListener('click', startLiveMonitoring)
+    }
+
+    // Test call button
+    const testCallBtn = document.getElementById('testCallBtn')
+    if (testCallBtn) {
+        testCallBtn.addEventListener('click', testCallService)
+    }
+
+    // Existing event listeners
+    setupModalOutsideClicks()
+    
+    // Start monitoring button
+    const startBtn = document.getElementById('startBtn')
+    if (startBtn) {
+        startBtn.addEventListener('click', startMonitoring)
+    }
+    
+    // Stop monitoring button
+    const stopBtn = document.getElementById('stopBtn')
+    if (stopBtn) {
+        stopBtn.addEventListener('click', stopMonitoring)
+    }
+    
+    // Reset button
+    const resetBtn = document.getElementById('resetBtn')
+    if (resetBtn) {
+        resetBtn.addEventListener('click', showConfirmModal)
+    }
+    
+    // Initial status check
+    fetchStatus()
+    
+    // Start intervals
+    logInterval = setInterval(fetchLogs, 2000)
+    alertInterval = setInterval(fetchCriticalAlerts, 3000)
+    allLogInterval = setInterval(fetchAllLogs, 5000)
+})
+
+async function testCamera() {
+    const cameraSelect = document.getElementById('cameraSelect')
+    const cameraIndex = parseInt(cameraSelect.value)
+    
+    try {
+        const response = await fetch('/camera-test')
+        const data = await response.json()
+        
+        if (data.available_cameras.includes(cameraIndex)) {
+            showToast(`Camera ${cameraIndex} is available and working!`, 'success')
+        } else {
+            showToast(`Camera ${cameraIndex} is not available. Try a different camera.`, 'error')
+        }
+    } catch (error) {
+        showToast('Failed to test camera. Please check your connection.', 'error')
+        console.error('Camera test error:', error)
+    }
+}
+
+async function startLiveMonitoring() {
+    const cameraSelect = document.getElementById('cameraSelect')
+    const livePrivacyBlur = document.getElementById('livePrivacyBlur')
+    const emailField = document.getElementById('email')
+    const enableEmail = document.getElementById('enableEmail')
+    
+    const cameraIndex = parseInt(cameraSelect.value)
+    const privacyBlur = livePrivacyBlur.checked
+    const email = enableEmail.checked ? emailField.value : null
+    
+    if (enableEmail.checked && !email) {
+        showToast('Please enter an email address for alerts', 'error')
+        return
+    }
+    
+    try {
+        const response = await fetch('/start-live', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                email: email,
+                camera_index: cameraIndex,
+                privacy_blur: privacyBlur,
+                zones: zones
+            })
+        })
+        
+        const data = await response.json()
+        
+        if (data.status === 'started') {
+            showToast('Live camera monitoring started!', 'success')
+            updateMonitoringStatus(true)
+            updateIntervals(true)
+        } else {
+            showToast(data.message || 'Failed to start live monitoring', 'error')
+        }
+    } catch (error) {
+        showToast('Failed to start live monitoring. Please check your connection.', 'error')
+        console.error('Start live monitoring error:', error)
+    }
+}
+
+async function startMonitoring() {
+    const enableEmail = document.getElementById('enableEmail').checked
+    const email = enableEmail ? document.getElementById('email').value : null
+    const filename = document.getElementById('filename').value
+    const privacyBlur = document.getElementById('privacyBlur').checked
+
+    if (!filename) {
+        return showToast('Please select a video file.', 'error')
+    }
+
+    saveZones()
+
+    const res = await fetch('/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            email,
+            filename,
+            privacy_blur: privacyBlur,
+            use_live_camera: false
+        }),
+    })
+    const data = await res.json()
+    showToast(`Monitoring started${email ? ' for ' + email : ''}`, 'success')
+    fetchStatus()
+}
+
+async function stopMonitoring() {
+    const res = await fetch('/stop', { method: 'POST' })
+    await res.json()
+    showToast('Monitoring stopped.', 'warning')
+    fetchStatus()
+    resetLiveFeed()
+}
+
+function updateMonitoringStatus(running) {
+    document.getElementById('monitoringStatus').innerHTML = running
+        ? '<div class="status-badge status-running"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12c0 5.5-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2s10 4.5 10 10z"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Monitoring is active</div>'
+        : '<div class="status-badge status-stopped"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12c0 5.5-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2s10 4.5 10 10z"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Monitoring is inactive</div>'
+
+    // Update button states
+    const startBtn = document.getElementById('startBtn')
+    const stopBtn = document.getElementById('stopBtn')
+    const startLiveBtn = document.getElementById('startLiveBtn')
+    const filename = document.getElementById('filename')
+    const email = document.getElementById('email')
+    const enableEmail = document.getElementById('enableEmail')
+    const privacyBlur = document.getElementById('privacyBlur')
+    const livePrivacyBlur = document.getElementById('livePrivacyBlur')
+    const cameraSelect = document.getElementById('cameraSelect')
+    const testCameraBtn = document.getElementById('testCameraBtn')
+
+    if (startBtn) startBtn.disabled = running
+    if (stopBtn) stopBtn.disabled = !running
+    if (startLiveBtn) startLiveBtn.disabled = running
+    if (filename) filename.disabled = running
+    if (email) email.disabled = running
+    if (enableEmail) enableEmail.disabled = running
+    if (privacyBlur) privacyBlur.disabled = running
+    if (livePrivacyBlur) livePrivacyBlur.disabled = running
+    if (cameraSelect) cameraSelect.disabled = running
+    if (testCameraBtn) testCameraBtn.disabled = running
+
+    updateIntervals(running)
+
+    if (!running) {
+        resetLiveFeed()
+    }
+}
+
+async function testCallService() {
+    try {
+        showToast('Testing call service...', 'info')
+        
+        const response = await fetch('/test-call', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        
+        const data = await response.json()
+        
+        if (data.status === 'success') {
+            showToast('Test call initiated! You should receive a call shortly.', 'success')
+        } else {
+            showToast(data.message || 'Failed to make test call', 'error')
+        }
+    } catch (error) {
+        showToast('Failed to test call service. Please check your connection.', 'error')
+        console.error('Test call error:', error)
+    }
+}
