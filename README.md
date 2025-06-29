@@ -146,7 +146,7 @@ HawkEye/
 ### 1. Clone and set up virtualenv
 
 ```bash
-git clone https://github.com/yourusername/HawkEye.git
+git clone https://github.com/souma9830/HawkEye.git
 cd HawkEye
 python -m venv venv
 source venv/bin/activate  # Windows: .\venv\Scripts\activate
