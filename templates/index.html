@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HawkEye Control Panel</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="page-header">
+        <h1>HawkEye</h1>
+        <div style="display: flex; align-items: center; gap: 0.75rem">
+          <a href="/analytics" class="btn btn-secondary">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              style="margin-right: 6px"
+            >
+              <path d="M3 3v18h18"></path>
+              <path d="m19 9-5 5-4-4-3 3"></path>
+            </svg>
+            Analytics
+          </a>
+          <button class="btn btn-icon" onclick="toggleInfo()">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 16v-4"></path>
+              <path d="M12 8h.01"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="alert alert-warning">
+        <div class="alert-icon">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"
+            ></path>
+            <path d="M12 9v4"></path>
+            <path d="M12 17h.01"></path>
+          </svg>
+        </div>
+        <div>
+          First time using HawkEye? Click the info button on top right to
+          learn more.
+        </div>
+      </div>
+
+      <div id="monitoringStatus"></div>
+
+      <!-- Video Upload Form -->
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <ul class="flashes">
+            {% for message in messages %}
+              <li>{{ message }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endwith %}
+      <form action="/upload" method="post" enctype="multipart/form-data" style="margin-bottom: 2em;">
+        <label for="video">Upload Video (.mp4, .avi):</label>
+        <input type="file" name="video" id="video" accept=".mp4,.avi" required>
+        <button type="submit">Upload</button>
+      </form>
+      <!-- End Video Upload Form -->
+
+      <!-- Live Camera Section -->
+      <div class="card">
+        <div class="card-header">
+          <h3>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px">
+              <path d="M23 7a16 16 0 0 0-6.26 1"></path>
+              <path d="M1 7a16 16 0 0 1 6.26 1"></path>
+              <path d="M7 2c3.2-1.1 5.5-.8 7.5.5 2 1.3 3.3 3.2 3.5 5.5.2 2.3-.3 4.5-1.5 6.5"></path>
+              <path d="M17 2c-3.2-1.1-5.5-.8-7.5.5-2 1.3-3.3 3.2-3.5 5.5-.2 2.3.3 4.5 1.5 6.5"></path>
+              <path d="M9 12a4 4 0 0 0 6 0"></path>
+            </svg>
+            Live Camera Monitoring
+          </h3>
+        </div>
+        <div class="card-content">
+          <div class="form-group">
+            <label for="cameraSelect" class="form-label">Select Camera</label>
+            <div class="input-wrapper">
+              <select id="cameraSelect" class="form-select">
+                <option value="0">Default Camera (0)</option>
+                <option value="1">Camera 1</option>
+                <option value="2">Camera 2</option>
+                <option value="3">Camera 3</option>
+                <option value="4">Camera 4</option>
+              </select>
+              <button id="testCameraBtn" class="btn btn-secondary" style="margin-left: 10px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path>
+                  <path d="M18 2h4v4"></path>
+                  <path d="m14 10 8-8"></path>
+                </svg>
+                Test Camera
+              </button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="livePrivacyBlur" class="checkbox" />
+              <label for="livePrivacyBlur" class="form-label">Enable privacy blur (only show detected people)</label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="btn-group">
+              <button id="startLiveBtn" class="btn btn-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px">
+                  <path d="M23 7a16 16 0 0 0-6.26 1"></path>
+                  <path d="M1 7a16 16 0 0 1 6.26 1"></path>
+                  <path d="M7 2c3.2-1.1 5.5-.8 7.5.5 2 1.3 3.3 3.2 3.5 5.5.2 2.3-.3 4.5-1.5 6.5"></path>
+                  <path d="M17 2c-3.2-1.1-5.5-.8-7.5.5-2 1.3-3.3 3.2-3.5 5.5-.2 2.3.3 4.5 1.5 6.5"></path>
+                  <path d="M9 12a4 4 0 0 0 6 0"></path>
+                </svg>
+                Start Live Monitoring
+              </button>
+              <button id="testCallBtn" class="btn btn-secondary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                </svg>
+                Test Call Service
+              </button>
+            </div>
+          </div>
+
+          <div class="alert alert-info" style="margin-top: 1rem;">
+            <div class="alert-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 16v-4"></path>
+                <path d="M12 8h.01"></path>
+              </svg>
+            </div>
+            <div>
+              <strong>Live Camera Monitoring:</strong> This feature uses your laptop's built-in camera for real-time security monitoring. 
+              The same detection, alert, and email features will work with live video feed. Make sure your camera is connected and accessible.
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- End Live Camera Section -->
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Monitoring Controls</h3>
+        </div>
+        <div class="card-content">
+          <div class="form-group">
+            <div class="checkbox-wrapper">
+              <input
+                type="checkbox"
+                id="enableEmail"
+                class="checkbox"
+                onchange="toggleEmailField(this.checked)"
+              />
+              <label for="enableEmail" class="form-label"
+                >Enable Email Alerts</label
+              >
+            </div>
+          </div>
+
+          <div class="form-group" id="emailField" style="display: none">
+            <label for="email" class="form-label"
+              >Email for alerts (check spam folder)</label
+            >
+            <div class="input-wrapper">
+              <input
+                type="email"
+                id="email"
+                class="form-input"
+                placeholder="you@example.com"
+              />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="filename" class="form-label">Select video file</label>
+            <div class="input-wrapper">
+              <select
+                id="filename"
+                class="form-select"
+                onchange="handleVideoPreview()"
+              >
+                <option value="">-- Select a video --</option>
+                {% for file in video_files %}
+                <option value="{{ file }}">{{ file }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Enable video preview</label>
+            <div class="radio-group">
+              <div class="radio-wrapper">
+                <input
+                  type="radio"
+                  id="previewYes"
+                  name="previewToggle"
+                  value="yes"
+                  checked
+                  class="radio"
+                  onchange="handleVideoPreview()"
+                />
+                <label for="previewYes">Yes</label>
+              </div>
+              <div class="radio-wrapper">
+                <input
+                  type="radio"
+                  id="previewNo"
+                  name="previewToggle"
+                  value="no"
+                  class="radio"
+                  onchange="handleVideoPreview()"
+                />
+                <label for="previewNo">No</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="video-viewer" id="videoViewer" style="display: none">
+            <video id="videoPlayer" controls></video>
+          </div>
+
+          <div class="form-group">
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="privacyBlur" class="checkbox" />
+              <label for="privacyBlur" class="form-label"
+                >Enable privacy blur (only show detected people)</label
+              >
+            </div>
+          </div>
+
+          <div class="form-group" style="display: none">
+            <label for="zoneSetup" class="form-label"></label>
+            <div class="video-container">
+              <canvas id="videoCanvas" width="0" height="0"></canvas>
+              <div class="zone-tools">
+                <button id="startDrawingBtn" class="btn btn-secondary"></button>
+                <button id="clearZonesBtn" class="btn btn-destructive"></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="btn-group">
+              <button id="startBtn" class="btn btn-primary">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  style="margin-right: 6px"
+                >
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                Start Monitoring
+              </button>
+              <button id="stopBtn" class="btn btn-secondary">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  style="margin-right: 6px"
+                >
+                  <rect x="6" y="4" width="4" height="16"></rect>
+                  <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+                Stop Monitoring
+              </button>
+              <button id="resetBtn" class="btn btn-destructive">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  style="margin-right: 6px"
+                >
+                  <path d="M3 6h18"></path>
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                </svg>
+                Reset Data
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Current Frame</h3>
+        </div>
+        <div class="card-content">
+          <div class="live-feed-container">
+            <img id="liveFeed" src="/current_frame" alt="Live feed" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Live Terminal</h3>
+        </div>
+        <div class="card-content">
+          <div class="terminal">
+            <pre id="logbox">Loading...</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              style="vertical-align: text-top; margin-right: 4px"
+            >
+              <path
+                d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"
+              ></path>
+              <path d="M12 9v4"></path>
+              <path d="M12 17h.01"></path>
+            </svg>
+            Critical Alerts
+          </h3>
+        </div>
+        <div class="card-content">
+          <ul id="criticalList" class="logs-list"></ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              style="vertical-align: text-top; margin-right: 4px"
+            >
+              <path
+                d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"
+              ></path>
+              <path d="M18 2h4v4"></path>
+              <path d="m14 10 8-8"></path>
+            </svg>
+            All Logs
+          </h3>
+        </div>
+        <div class="card-content">
+          <ul id="allLogsList" class="logs-list"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="infoModal">
+      <div class="modal-content">
+        <div class="card-header">
+          <h2>About HawkEye</h2>
+          <button class="modal-close" onclick="toggleInfo()">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="card-content">
+          <p>
+            HawkEye is a tool that helps detect
+            <strong>dangerous situations</strong> by analyzing
+            <strong>human movement</strong> in CCTV footage. It's designed to
+            run <strong>offline</strong> on local devices and works even without
+            internet (if we use a locally hosted AI model for analyzing).
+          </p>
+          <p>
+            This demo version works with sample video files and shows how the
+            system can monitor scenes, identify suspicious activity, and send
+            alerts when needed.
+          </p>
+          <p>Features include:</p>
+          <ul style="padding-left: 1.5rem; margin-bottom: 1rem">
+            <li>
+              <strong>Multi-level threat detection</strong> (Low, Medium, High,
+              Critical)
+            </li>
+            <li><strong>Privacy masking</strong> to blur non-relevant areas</li>
+            <li><strong>Person tracking</strong> across video frames</li>
+            <li><strong>Advanced analytics</strong> for security insights</li>
+            <li>
+              <strong>External alarm system</strong> connectivity for immediate
+              physical response
+            </li>
+          </ul>
+          <p><strong>How to use:</strong></p>
+          <ol style="padding-left: 1.5rem">
+            <li>Select a video file</li>
+            <li>Enable email alerts if you want to get notified</li>
+            <li>Click <em>Start Monitoring</em></li>
+            <li>It will scan the video for movement and take screenshots</li>
+            <li>Screenshots are analyzed for risky or dangerous behavior</li>
+            <li>If a threat is found, an email alert is sent (if enabled)</li>
+          </ol>
+          <p><strong>Technical details:</strong></p>
+          <ul style="padding-left: 1.5rem; margin-bottom: 1rem">
+            <li>Built with Python backend and HTML/CSS/JavaScript frontend</li>
+            <li>
+              Uses YOLOv8 computer vision to detect motion changes in video
+            </li>
+            <li>
+              AI analysis of detected scenes for threat assessment using GPT-4o
+            </li>
+            <li>
+              Supports local video files with plans for real-time CCTV
+              integration
+            </li>
+          </ul>
+          <p><strong>Future improvements:</strong></p>
+          <ul style="padding-left: 1.5rem">
+            <li>
+              Optimizing the detector for more efficient and accurate
+              screenshots
+            </li>
+            <li>
+              Reducing false positives through advanced machine learning models
+            </li>
+            <li>
+              Real-time analysis to minimize lag between detection and
+              notification
+            </li>
+            <li>Mobile application for remote monitoring and alerts</li>
+            <li>Integration with existing security infrastructure</li>
+          </ul>
+          <p>
+            <em
+              >This project was developed as a hackathon submission to
+              demonstrate the potential of AI-powered security monitoring
+              systems that prioritize privacy and local processing.</em
+            >
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="confirmModal">
+      <div class="modal-content" style="max-width: 400px">
+        <div class="card-header">
+          <h3>Confirm Action</h3>
+          <button class="modal-close" onclick="confirmReset(false)">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="card-content">
+          <p style="margin-bottom: 1.25rem">
+            Are you sure you want to delete all logs and screenshots?
+          </p>
+          <div class="btn-group">
+            <button onclick="confirmReset(true)" class="btn btn-destructive">
+              Yes, delete everything
+            </button>
+            <button onclick="confirmReset(false)" class="btn btn-secondary">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast">
+      <div id="toastIcon"></div>
+      <div id="toastMessage"></div>
+    </div>
+
+    <script src="/static/script.js"></script>
+  </body>
+</html>
