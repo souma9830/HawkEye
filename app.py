@@ -10,14 +10,14 @@ import logging
 import cv2
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+
 load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Test call service initialization on startup
+
 try:
     from call_service import CallService
     test_call_service = CallService()
